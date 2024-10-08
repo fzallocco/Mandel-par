@@ -1,1 +1,0 @@
-This the cstar report of the parallel mandelbrot program
