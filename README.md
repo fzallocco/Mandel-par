@@ -7,3 +7,4 @@ time file is an add on to measure performance.
 10/13
 
 Converted to C++ open mp - tested performance using chrono - on Colab
+https://colab.research.google.com/drive/1E1PIlbgMYBIdSxPZN5MPmhQd-GSZxLHb?usp=sharing
