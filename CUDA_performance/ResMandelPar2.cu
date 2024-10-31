@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include "/content/ConvertRGBtoGrey.hpp"
+#include "Mandelbrot.hpp"
 #include <ctime>    // for time()
 #include <chrono>
 
