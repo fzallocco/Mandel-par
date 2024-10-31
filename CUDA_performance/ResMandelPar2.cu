@@ -3,6 +3,7 @@
 #include <math.h>
 #include "/content/ConvertRGBtoGrey.hpp"
 #include <ctime>    // for time()
+#include <chrono>
 
 #define CxMin -1.27
 #define CxMax -1.24

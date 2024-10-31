@@ -14,10 +14,10 @@ LIB_DIRS = -L/usr/lib/x86_64-linux-gnu
 LIBS = -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc
 
 # Target executable
-TARGET = Res-Mandel_par2.exe
+TARGET = ResMandelPar2.exe
 
 # Source files
-SRC_CUDA = Res-Mandel_par2.cu
+SRC_CUDA = ResMandelPar2.cu
 
 # Build rule for the target
 $(TARGET): $(SRC_CUDA)
