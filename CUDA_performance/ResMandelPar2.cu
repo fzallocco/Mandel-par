@@ -4,97 +4,77 @@
 #include "Mandelbrot.hpp"
 #include <ctime>    // for time()
 #include <chrono>
+#include <iostream>
+#include <fstream>
+#include <chrono>
+#include <cuda_runtime.h>
 
-#define CxMin -1.27
-#define CxMax -1.24
-#define CyMin 0.01
-#define CyMax 0.03
-#define EscapeRadius 2
-#define IDim_max 700
-#define MaxGrayComponentValue 255
-#define IterationMax 1275
-#define output_row_width 20
+using namespace std;
 
-float PixelWidth;
-float PixelHeight;
-float ER2;
+__device__ int mandelbrot(float real, float imag, int max_iter) {
+    float z_real = real;
+    float z_imag = imag;
+    int n;
+    for (n = 0; n < max_iter; ++n) {
+        float r2 = z_real * z_real;
+        float i2 = z_imag * z_imag;
+        if (r2 + i2 > 4.0f) break;
+        z_imag = 2.0f * z_real * z_imag + imag;
+        z_real = r2 - i2 + real;
+    }
+    return n;
+}
 
-__global__ void mandelKernel(float CxMin, float PixelWidth, float CyMin, float PixelHeight, float ER2, int IterationMax, int *image_out) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (i < IDim_max && j < IDim_max) {
-        float Zx, Zy;
-        float Zx2, Zy2;
-        float Cx, Cy;
-        int Iteration;
-
-        Cx = CxMin + j * PixelWidth;
-        Cy = CyMin + i * PixelHeight;
-
-        Zx = 0.0;
-        Zy = 0.0;
-        Zx2 = 0.0;
-        Zy2 = 0.0;
-
-        for (Iteration = 0; Iteration < IterationMax && ((Zx2 + Zy2) < ER2); Iteration++) {
-            Zy = 2 * Zx * Zy + Cy;
-            Zx = Zx2 - Zy2 + Cx;
-            Zx2 = Zx * Zx;
-            Zy2 = Zy * Zy;
-        }
-
-        if (Iteration == IterationMax)
-            image_out[i * IDim_max + j] = 0;
-        else
-            image_out[i * IDim_max + j] = (int)Iteration / 5;
+__global__ void mandelbrot_kernel(int *output, int width, int height, float real_min, float real_max, float imag_min, float imag_max, int max_iter) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x < width && y < height) {
+        float real = real_min + (real_max - real_min) * x / width;
+        float imag = imag_min + (imag_max - imag_min) * y / height;
+        int index = y * width + x;
+        output[index] = mandelbrot(real, imag, max_iter);
     }
 }
 
-__host__ void write_image_to_file(int *image_out) {
-    int i, j;
-    int OUTPUT_COUNTER = 1;
-    printf("P2\n");
-    printf("%d %d\n", IDim_max, IDim_max);
-    printf("%d\n", MaxGrayComponentValue);
-
-    for (i = 0; i < IDim_max; i++) {
-        for (j = 0; j < IDim_max; j++) {
-            if (OUTPUT_COUNTER == output_row_width) {
-                printf("\n");
-                OUTPUT_COUNTER = 1;
-            }
-            printf("%d ", image_out[i * IDim_max + j]);
-            OUTPUT_COUNTER += 1;
-        }
+void write_pgm(const char *filename, int *data, int width, int height) {
+    ofstream file(filename, ios::out | ios::binary);
+    file << "P5\n" << width << " " << height << "\n255\n";
+    for (int i = 0; i < width * height; ++i) {
+        file.put(static_cast<unsigned char>(data[i] * 255 / 1000));
     }
+    file.close();
 }
 
 int main() {
-    PixelWidth = (CxMax - CxMin) / IDim_max;
-    PixelHeight = (CyMax - CyMin) / IDim_max;
-    ER2 = EscapeRadius * EscapeRadius;
+    const int width = 1024;
+    const int height = 1024;
+    const float real_min = -2.0f;
+    const float real_max = 1.0f;
+    const float imag_min = -1.5f;
+    const float imag_max = 1.5f;
+    const int max_iter = 1000;
 
-    int *d_image_out;
-    int *h_image_out = (int *)malloc(IDim_max * IDim_max * sizeof(int)); //allocate memory in GPU/Device during Kernel execution
-    /*malloc is used the GPU kernel code and memory allocated is typically local or shared memory. The lifetime of the memory is limited to the execution of the kernel, and it must be freed within the kernel using free*/
-    cudaMalloc((void **)&d_image_out, IDim_max * IDim_max * sizeof(int)); //allocate arrays in device memory
-    /*function is used in the CPU/Host and memory is allocated in the GPU for use in CUDA kernels. Memory is typically allocated globally in the device and can be accessed by kernel running on the GPU*/
-    /*Data must be transferred between host and device memory using functions like cudaMemcpy*/
+    int *h_output = new int[width * height];
+    int *d_output;
+    cudaMalloc(&d_output, width * height * sizeof(int));
 
-    /*cudaMalloc allocates memory on the GPU from the CPU vs malloc allocates memory within kernel's execution*/
-    /*Use cudaMalloc for memory that persists across multiple kernel launches. Use malloc for temporary allocations that only exist during the kernel's execution*/
-    dim3 threadsPerBlock(16, 16); //grid dimentions
-    dim3 numBlocks((IDim_max + threadsPerBlock.x - 1) / threadsPerBlock.x, (IDim_max + threadsPerBlock.y - 1) / threadsPerBlock.y); //number of blocks
+    dim3 blockDim(16, 16);
+    dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y);
 
-    mandelKernel<<<numBlocks, threadsPerBlock>>>(CxMin, PixelWidth, CyMin, PixelHeight, ER2, IterationMax, d_image_out);
+    auto start = chrono::high_resolution_clock::now();
+    mandelbrot_kernel<<<gridDim, blockDim>>>(d_output, width, height, real_min, real_max, imag_min, imag_max, max_iter);
+    cudaDeviceSynchronize();
+    auto end = chrono::high_resolution_clock::now();
 
-    cudaMemcpy(h_image_out, d_image_out, IDim_max * IDim_max * sizeof(int), cudaMemcpyDeviceToHost); //copy memory from Host/CPU to Device/GPU
+    cudaMemcpy(h_output, d_output, width * height * sizeof(int), cudaMemcpyDeviceToHost);
 
-    write_image_to_file(h_image_out);
+    write_pgm("mandelbrot.pgm", h_output, width, height);
 
-    cudaFree(d_image_out); //frees memory on the GPU
-    free(h_image_out); //freeing memory after kernel execution
+    cudaFree(d_output);
+    delete[] h_output;
+
+    chrono::duration<double> duration = end - start;
+    cout << "Time taken: " << duration.count() << " seconds" << endl;
 
     return 0;
 }

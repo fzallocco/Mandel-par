@@ -3,7 +3,11 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
+#include <chrono>
+#include <omp.h>
+#include <math.h>
 #include <tuple>
 #include <string>
 
@@ -13,8 +17,11 @@ using namespace std;
 __device__ __constant__ int d_rows;
 __device__ __constant__ int d_columns;
 
-__global__ void mandelKernel(float CxMin, float PixelWidth, float CyMin, float PixelHeight, float ER2, int IterationMax, int *image_out);
-__host__ void write_image_to_file(int *image_out);
+// Function to compute the Mandelbrot set
+int mandelbrot(float real, float imag, int max_iter);
+
+// Function to write the output to a .pgm file
+void write_pgm(const char *filename, int *data, int width, int height);
 
 /*__host__ uchar *cpuConvertToGray(std::string inputImage); replace
 __host__ std::tuple<std::string, std::string, std::string, int> parseCommandLineArguments(int argc, char *argv[]); we need this also from memory analysis
